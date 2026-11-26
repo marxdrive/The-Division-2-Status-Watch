@@ -373,8 +373,8 @@ class Monitor:
         })
         send_gotify(
             settings,
-            "This is a test push from Division 2 Status Watch. If you received it, your Gotify setup is working.",
-            title="Division 2 Status Watch test",
+            "This is a test push from The Division 2 Status Watch. If you received it, your Gotify setup is working.",
+            title="The Division 2 Status Watch test",
         )
 
     def check_once(self) -> dict:
@@ -434,7 +434,7 @@ class Monitor:
 MONITOR = Monitor()
 
 INDEX_HTML = r"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#10171d"><title>Division 2 Status Watch</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#10171d"><title>The Division 2 Status Watch</title>
 <style>
 :root{color-scheme:dark;--bg:#10171d;--panel:#19232b;--line:#2a3944;--muted:#9aadb9;--text:#eef4f6;--green:#54d69a;--amber:#ffc86a;--red:#ff7676;--blue:#83b8ff}
 *{box-sizing:border-box}body{margin:0;background-color:var(--bg);background-image:radial-gradient(ellipse at 82% -8%,rgba(40,55,70,.48) 0,transparent 38%),linear-gradient(rgba(9,14,19,.58),rgba(9,14,19,.78)),url('/background.png');background-position:center,center,center;background-size:cover,cover,cover;background-attachment:fixed,fixed,fixed;background-repeat:no-repeat;color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
@@ -462,7 +462,7 @@ button{border:0;border-radius:9px;background:#88baff;color:#0c1820;font:750 14px
 @media(max-width:520px){.radio-row{grid-template-columns:1fr}}
 @media(max-width:420px){.status-card{grid-template-columns:1fr}.status-pill{justify-self:start}.inline{grid-template-columns:1fr;gap:0}}
 </style></head><body><main>
-<header><div><div class="eyebrow">Self-hosted game monitor</div><h1>Division 2 Status Watch</h1></div><div class="logo" aria-hidden="true">D2</div></header>
+<header><div><div class="eyebrow">Self-hosted game monitor</div><h1>The Division 2 Status Watch</h1></div><div class="logo" aria-hidden="true">D2</div></header>
 <section class="card status-card" aria-live="polite"><div><div class="label">Ubisoft server status</div><div id="status-name" class="status-name">Checking…</div><div id="status-sub" class="status-sub">Waiting for the first check</div></div><div id="status-pill" class="status-pill unknown">Unknown</div></section>
 <div class="columns"><section class="card"><h2>Monitor settings</h2><p class="intro">Choose how often to check and where to send a recovery alert.</p>
 <form id="settings-form"><div class="field"><label for="interval">Check interval</label><select id="interval" name="interval_minutes">
@@ -536,7 +536,7 @@ class Handler(BaseHTTPRequestHandler):
         if supplied == expected:
             return True
         self.send_response(401)
-        self.send_header("WWW-Authenticate", 'Basic realm="Division 2 Status Watch"')
+        self.send_header("WWW-Authenticate", 'Basic realm="The Division 2 Status Watch"')
         self.send_header("Content-Length", "0")
         self.end_headers()
         return False
@@ -607,7 +607,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    log.info("Division 2 Status Watch listening on port %s", PORT)
+    log.info("The Division 2 Status Watch listening on port %s", PORT)
     server.serve_forever()
 
 
