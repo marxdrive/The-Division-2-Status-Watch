@@ -1,8 +1,10 @@
 services:
   division2-status-watch:
+    image: division2-status-watch:local
     build:
       context: https://github.com/marxdrive/The-Division-2-Status-Watch.git#main
       dockerfile: Dockerfile
+    pull_policy: build
     container_name: division2-status-watch
     restart: unless-stopped
     ports:
