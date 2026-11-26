@@ -231,24 +231,48 @@ def send_gotify(
         raise ValueError("Enter a Gotify server URL beginning with http:// or https://.")
     if parsed.username or parsed.password:
         raise ValueError("Do not put credentials in the Gotify server URL.")
-    request = Request(
-        server + "/message",
-        data=json.dumps({
-            "title": title,
-            "message": body,
-            "priority": int(settings["gotify_priority"]),
-        }).encode("utf-8"),
-        method="POST",
-        headers={
-            "X-Gotify-Key": settings["gotify_app_token"],
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-    )
-    with urlopen(request, timeout=20) as response:
-        if not 200 <= response.status < 300:
-            raise RuntimeError(f"Gotify returned HTTP {response.status}.")
-        response.read(4096)
+    payload = json.dumps({
+        "title": title,
+        "message": body,
+        "priority": int(settings["gotify_priority"]),
+    }).encode("utf-8")
+    token = settings["gotify_app_token"]
+
+    def post(headers: dict) -> None:
+        request = Request(
+            server + "/message",
+            data=payload,
+            method="POST",
+            headers={
+                **headers,
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            },
+        )
+        with urlopen(request, timeout=20) as response:
+            if not 200 <= response.status < 300:
+                raise RuntimeError(f"Gotify returned HTTP {response.status}.")
+            response.read(4096)
+
+    try:
+        post({"X-Gotify-Key": token})
+    except HTTPError as first_error:
+        if first_error.code != 401:
+            raise
+        first_error.close()
+        try:
+            # Some reverse proxies or older integrations handle the standard
+            # bearer header while dropping Gotify's custom token header.
+            post({"Authorization": f"Bearer {token}"})
+        except HTTPError as second_error:
+            if second_error.code == 401:
+                second_error.close()
+                raise RuntimeError(
+                    "Gotify rejected the token in both documented headers (401). "
+                    "Confirm this is an application token for this Gotify server, "
+                    "or check whether a reverse proxy is removing authorization headers."
+                ) from second_error
+            raise
 
 
 def notify_recovery(settings: dict) -> None:
