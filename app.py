@@ -26,6 +26,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 SETTINGS_PATH = DATA_DIR / "settings.json"
 STATE_PATH = DATA_DIR / "state.json"
 BACKGROUND_PATH = Path(__file__).with_name("background.png")
+FAVICON_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAYAAABXAvmHAAAACXBIWXMAAAsTAAALEwEAmpwYAAAFfElEQVR4nO1ZW2xWRRD+8FaNlygGbyHiBdHIi7cXQaNivPCgEE29xcuDQuTMnJZSiwpoiS8S8RIbnvRBTYgmRixJJRheagIVgzxIAqSxUhK1ll7+3dMimgDNMbP/nt/t+c9/O/3b/sZOcpL9d2dnv9mdndmZH5ihGiHNWIH/CGnCS3mdinFEEx5HjZPy8Ygi/Jw3oBnfa8JfGR+LUKOU8bFIMGrCnrxBRXhHM0LFGB5pxI2oMQp8XK8YA4JRE97OY8gwlprBrBI9oz7moEZo1MccwRThCwgP5TGFK3G2ZvzuKLGvvxnnY5rp1yacpwldES7N6AtbcU4is2JscBjl6wjrcSamicJWnKEI21xMivFawQnBKlyiCMdiSrRhmkgz2mJY+nUjLi46SREejU2SS7MGU0ya0ZyHg/FYWZMV49txx0YYCxj1mCIKGPWyZgz8zlKgn5eLLG1N+DCuvWL8nWEsnmzwGcZiWSth/Q9kXC6wYE1S4FkbjbdqxomE48vGCMKCpIVDH3XKwzJrtxIU/xAgFkyf6WO0CY/wJskYISyQNZLWNpgIWxWhVxGeSb7xjH0FJrtKHDn+Mi6L+ejNiqBLzXVMUkvgHHVijcg0G1h6/R9CYFbi8QUe5mtGUIaQH6MYoQjr3X7FWKcZSwY8XHH0BZwrn7S1h/uFVxH2O4qsz/n67AmVVFwiclEbVB7u0oTRkjtJ+CZsxVmyGwHh1aABtxcV7G4U4Q6ZEwKz7Ml/XcbJndA+7isGfFnUzhDuVIyhMoRuwQRJM7aUceJDgimHj7E0XxChy+xkE2abXfIw331/FPlaJgC+pQzwPYLFYGrCbMEoWJMUWOOYx5+K0C1PCUU4VcIuxwIPT0RyBjxcoAk/KYbSjKZC4GWOyvf1cdmnLIZuwVQ0sMql1IyD5XqS2C6Ju7w7B47xZE5xwsb4WsKb5Ot1ed/Bgo9M1YCrNeNAKiUImSHGTTlZHp5zdiynhPAIb0rwBwRjUbuUSKcJq60JVapE7/EGXC5yhn3cHPVLW/pkTHhSyO0WTAWf0XlK+KiTwKIZa1OYk4kRgY8Hoz5pS5+Mpdj1tYKlUPRONqXYGzzF1xEQVuYUyLY7JiJTEbahEsoQntKMwxNYcDCpneI7LFiQhiRSShlDqgATPJE0G7DfvJAnkhEqQrtifKwYu6ZcAcYuszahPbUC4j3KjMaTpURP5MFSk30pNmvCb1MGnsxazbI2qkWSrQWEByQzsk/iPsU4WYVdPmlkic0T3pc1osywKiRJR4bxdCGhNsXbVEl0FV6ZExYITLKWrFmV4pp4IpMeEo4pD/Pi44rwkSn5EfZqwlua8EoR8M2WZ68tE36aJ8/DPFva6SuYeVVKmvCZ3bnXS/FKXdUBvNN+5nf0LC5GKpvRyVqfVAW8EerjHguiX1LEJJ6Mh4WacG/Gw8PWtk+LB7Ge7LRRQJ4XWZ6FSTJCH3W2ABBKZohqkmbstsDWJY4TNipGp2J8ZZXd4czdYed+KTxJT2whRXjTeqHvUG2SUzAJiNTnPdwSH9eEQ669u4Uwacfc5KG8+T5uNXkFYczNLaqrBGOztc/eIcJVsbFOF+TgalwZjUk75jo7x4FvxDWKcNSObcJkkbFRW+q2+cK10dhIA25wCwGuizQ5xr8udNC9zMPZvCEq6+8u+82floZ9XBTVcCzg5dFYsArXacYX0j/sY64zZ67hJXzuKq0Zy3OVOELXUAsunFTwMSW2O2bRUUldSBNuc/MDRWifMvDjgDBWuEUwW5nbIAUosXsxOfnsHViiGG+4lTmdnfsippPkNKRWU1GiThiRyzpCuBS1QvJylD/fFOM9sWdF+MXUcrI1JmnvUYR3JZhV9ZU5QzP0P6d/AMeB83edFvzHAAAAAElFTkSuQmCC")
 WEB_USERNAME = os.environ.get("WEB_USERNAME", "admin")
 WEB_PASSWORD = os.environ["WEB_PASSWORD"]
 PORT = int(os.environ.get("PORT", "8080"))
@@ -69,15 +70,23 @@ def default_settings() -> dict:
         "method": "none", "email_to": "",
         "smtp_host": "", "smtp_port": 587, "smtp_security": "starttls",
         "smtp_username": "", "smtp_password": "", "email_from": "",
-        "phone_to": "", "twilio_account_sid": "", "twilio_auth_token": "",
-        "twilio_from": "", "gotify_server": "", "gotify_app_token": "",
+        "whatsapp_to": "", "twilio_account_sid": "", "twilio_auth_token": "",
+        "twilio_whatsapp_from": "", "whatsapp_content_sid": "",
+        "gotify_server": "", "gotify_app_token": "",
         "gotify_priority": 5,
     }
 
 
 def get_settings() -> dict:
     result = default_settings()
-    result.update(read_json(SETTINGS_PATH, {}))
+    stored = read_json(SETTINGS_PATH, {})
+    result.update(stored)
+    result["whatsapp_to"] = result.get("whatsapp_to") or stored.get("phone_to", "")
+    result["twilio_whatsapp_from"] = result.get("twilio_whatsapp_from") or stored.get("twilio_from", "")
+    if result.get("method") == "sms":
+        result["method"] = "whatsapp"
+    result.pop("phone_to", None)
+    result.pop("twilio_from", None)
     try:
         interval = int(result["interval_minutes"])
         result["interval_minutes"] = min(ALLOWED_INTERVALS, key=lambda value: abs(value - interval))
@@ -220,12 +229,25 @@ def send_email(settings: dict, subject: str, body: str) -> None:
             smtp.send_message(message)
 
 
-def send_sms(settings: dict, body: str) -> None:
+def send_whatsapp(settings: dict, body: str, status_label: str) -> None:
     sid = settings["twilio_account_sid"]
     url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
-    data = urlencode({
-        "To": settings["phone_to"], "From": settings["twilio_from"], "Body": body,
-    }).encode("utf-8")
+    def channel_address(value: str) -> str:
+        value = value.strip()
+        if value.lower().startswith("whatsapp:"):
+            value = value.split(":", 1)[1]
+        return "whatsapp:" + value
+
+    to = channel_address(settings["whatsapp_to"])
+    sender = channel_address(settings["twilio_whatsapp_from"])
+    fields = {"To": to, "From": sender}
+    content_sid = settings.get("whatsapp_content_sid", "").strip()
+    if content_sid:
+        fields["ContentSid"] = content_sid
+        fields["ContentVariables"] = json.dumps({"1": status_label, "2": PAGE_URL})
+    else:
+        fields["Body"] = body
+    data = urlencode(fields).encode("utf-8")
     token = base64.b64encode(f"{sid}:{settings['twilio_auth_token']}".encode()).decode("ascii")
     request = Request(url, data=data, method="POST", headers={
         "Authorization": f"Basic {token}",
@@ -306,8 +328,8 @@ def notify_status(settings: dict, status: str) -> None:
     body = f"{message}\n\nChecked at {now_iso()} (UTC).\n{PAGE_URL}"
     if settings.get("method") == "email":
         send_email(settings, subject, body)
-    elif settings.get("method") == "sms":
-        send_sms(settings, f"{message} Ubisoft status: {PAGE_URL}")
+    elif settings.get("method") == "whatsapp":
+        send_whatsapp(settings, f"{message} Ubisoft status: {PAGE_URL}", STATUS_LABELS[status])
     elif settings.get("method") == "gotify":
         send_gotify(settings, body, title=subject)
     else:
@@ -328,8 +350,9 @@ class Monitor:
             s = self.settings
             safe = {key: s[key] for key in (
                 "interval_minutes", "notify_statuses", "method", "email_to", "smtp_host", "smtp_port",
-                "smtp_security", "smtp_username", "email_from", "phone_to",
-                "twilio_account_sid", "twilio_from", "gotify_server", "gotify_priority",
+                "smtp_security", "smtp_username", "email_from", "whatsapp_to",
+                "twilio_account_sid", "twilio_whatsapp_from", "whatsapp_content_sid",
+                "gotify_server", "gotify_priority",
             )}
             safe["has_smtp_password"] = bool(s["smtp_password"])
             safe["has_twilio_auth_token"] = bool(s["twilio_auth_token"])
@@ -341,7 +364,8 @@ class Monitor:
             updated = self.settings.copy()
             ordinary = (
                 "method", "email_to", "smtp_host", "smtp_security", "smtp_username",
-                "email_from", "phone_to", "twilio_account_sid", "twilio_from",
+                "email_from", "whatsapp_to", "twilio_account_sid", "twilio_whatsapp_from",
+                "whatsapp_content_sid",
                 "gotify_server",
             )
             for key in ordinary:
@@ -367,14 +391,14 @@ class Monitor:
             if not 0 <= updated["gotify_priority"] <= 10:
                 raise ValueError("Gotify priority must be from 0 to 10.")
             updated["interval_minutes"] = interval
-            if updated["method"] not in ("none", "email", "sms", "gotify"):
-                raise ValueError("Choose email, phone message, or Gotify notifications.")
+            if updated["method"] not in ("none", "email", "whatsapp", "gotify"):
+                raise ValueError("Choose email, WhatsApp, or Gotify notifications.")
             if updated["smtp_security"] not in ("starttls", "ssl", "none"):
                 raise ValueError("Choose a valid email connection security setting.")
             if updated["method"] == "email" and not all(updated[k] for k in ("email_to", "smtp_host", "email_from")):
                 raise ValueError("Enter the recipient email, SMTP server, and sender email.")
-            if updated["method"] == "sms" and not all(updated[k] for k in ("phone_to", "twilio_account_sid", "twilio_auth_token", "twilio_from")):
-                raise ValueError("Enter the phone number and all Twilio sender credentials.")
+            if updated["method"] == "whatsapp" and not all(updated[k] for k in ("whatsapp_to", "twilio_account_sid", "twilio_auth_token", "twilio_whatsapp_from")):
+                raise ValueError("Enter the WhatsApp recipient, approved sender, and Twilio account credentials.")
             if updated["method"] == "gotify" and not all(updated[k] for k in ("gotify_server", "gotify_app_token")):
                 raise ValueError("Enter your Gotify server URL and application token.")
             self.settings = updated
@@ -439,9 +463,9 @@ class Monitor:
                     pending = None
                     write_json(STATE_PATH, self.state)
             if status == pending and pending:
-                if settings.get("method") not in ("email", "sms", "gotify"):
+                if settings.get("method") not in ("email", "whatsapp", "gotify"):
                     with self.lock:
-                        self.state["notification_error"] = f"{STATUS_LABELS[pending]} alert pending. Choose Email, Phone message, or Gotify in settings."
+                        self.state["notification_error"] = f"{STATUS_LABELS[pending]} alert pending. Choose Email, WhatsApp, or Gotify in settings."
                         write_json(STATE_PATH, self.state)
                 else:
                     try:
@@ -472,7 +496,7 @@ class Monitor:
 MONITOR = Monitor()
 
 INDEX_HTML = r"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#10171d"><title>The Division 2 Status Watch</title>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#10171d"><link rel="icon" type="image/png" href="/favicon.png"><title>The Division 2 Status Watch</title>
 <style>
 :root{color-scheme:dark;--bg:#10171d;--panel:#19232b;--line:#2a3944;--muted:#9aadb9;--text:#eef4f6;--green:#54d69a;--amber:#ffc86a;--red:#ff7676;--blue:#83b8ff}
 *{box-sizing:border-box}body{margin:0;background-color:var(--bg);background-image:radial-gradient(ellipse at 82% -8%,rgba(40,55,70,.48) 0,transparent 38%),linear-gradient(rgba(9,14,19,.58),rgba(9,14,19,.78)),url('/background.png');background-position:center,center,center;background-size:cover,cover,cover;background-attachment:fixed,fixed,fixed;background-repeat:no-repeat;color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
@@ -506,18 +530,19 @@ button{border:0;border-radius:9px;background:#88baff;color:#0c1820;font:750 14px
 <div class="columns"><section class="card"><h2>Monitor settings</h2><p class="intro">Choose how often to check, which statuses to alert for, and where to send notifications.</p>
 <form id="settings-form"><div class="field"><label for="interval">Check interval</label><select id="interval" name="interval_minutes">
 <option value="3">Every 3 minutes</option><option value="5">Every 5 minutes</option><option value="10">Every 10 minutes</option><option value="15">Every 15 minutes</option><option value="20">Every 20 minutes</option><option value="25">Every 25 minutes</option><option value="30">Every 30 minutes</option><option value="60">Every 60 minutes</option>
-</select></div><div class="field"><div class="section-title">Status change alerts</div><div class="hint">Send a notification when Ubisoft changes to any selected status. Online (Operational) is selected by default.</div><div class="status-options"><label class="status-option"><input type="checkbox" name="notify_statuses" value="operational"> Online (Operational)</label><label class="status-option"><input type="checkbox" name="notify_statuses" value="maintenance"> Maintenance</label><label class="status-option"><input type="checkbox" name="notify_statuses" value="problems"> Problems</label><label class="status-option"><input type="checkbox" name="notify_statuses" value="outage"> Outage</label></div></div><div class="field"><label>Notification delivery</label><div class="radio-row"><label class="radio"><input type="radio" name="method" value="email"> Email</label><label class="radio"><input type="radio" name="method" value="sms"> Phone message</label><label class="radio"><input type="radio" name="method" value="gotify"> Gotify push</label></div></div>
+</select></div><div class="field"><div class="section-title">Status change alerts</div><div class="hint">Send a notification when Ubisoft changes to any selected status. Online (Operational) is selected by default.</div><div class="status-options"><label class="status-option"><input type="checkbox" name="notify_statuses" value="operational"> Online (Operational)</label><label class="status-option"><input type="checkbox" name="notify_statuses" value="maintenance"> Maintenance</label><label class="status-option"><input type="checkbox" name="notify_statuses" value="problems"> Problems</label><label class="status-option"><input type="checkbox" name="notify_statuses" value="outage"> Outage</label></div></div><div class="field"><label>Notification delivery</label><div class="radio-row"><label class="radio"><input type="radio" name="method" value="email"> Email</label><label class="radio"><input type="radio" name="method" value="whatsapp"> WhatsApp</label><label class="radio"><input type="radio" name="method" value="gotify"> Gotify push</label></div></div>
 <div id="email-settings" class="section" hidden><div class="section-title">Email delivery</div>
 <div class="field"><label for="email_to">Send alerts to</label><input id="email_to" name="email_to" type="email" autocomplete="email" placeholder="you@example.com"></div>
 <div class="inline"><div class="field"><label for="smtp_host">SMTP server</label><input id="smtp_host" name="smtp_host" placeholder="smtp.example.com"></div><div class="field"><label for="smtp_port">SMTP port</label><input id="smtp_port" name="smtp_port" type="number" min="1" max="65535" placeholder="587"></div></div>
 <div class="inline"><div class="field"><label for="smtp_security">Connection security</label><select id="smtp_security" name="smtp_security"><option value="starttls">STARTTLS (usually 587)</option><option value="ssl">SSL/TLS (usually 465)</option><option value="none">None</option></select></div><div class="field"><label for="email_from">Sender email</label><input id="email_from" name="email_from" type="email" placeholder="alerts@example.com"></div></div>
 <div class="field"><label for="smtp_username">SMTP username</label><input id="smtp_username" name="smtp_username" autocomplete="username" placeholder="Optional if relay is allowed"></div>
 <div class="field"><label for="smtp_password">SMTP password</label><input id="smtp_password" name="smtp_password" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved password"><div class="hint">A mail provider may require an app password. Saved passwords are never shown here.</div></div></div>
-<div id="sms-settings" class="section" hidden><div class="section-title">Phone messages with Twilio</div>
-<div class="field"><label for="phone_to">Your phone number</label><input id="phone_to" name="phone_to" type="tel" autocomplete="tel" placeholder="+15551234567"><div class="hint">Use international format, including + and country code.</div></div>
+<div id="whatsapp-settings" class="section" hidden><div class="section-title">WhatsApp messages with Twilio</div>
+<div class="field"><label for="whatsapp_to">Your WhatsApp number</label><input id="whatsapp_to" name="whatsapp_to" type="tel" autocomplete="tel" placeholder="+15551234567"><div class="hint">Use international format, including + and country code. The app adds WhatsApp addressing automatically.</div></div>
 <div class="field"><label for="twilio_account_sid">Twilio Account SID</label><input id="twilio_account_sid" name="twilio_account_sid" autocomplete="off" placeholder="AC…"></div>
 <div class="field"><label for="twilio_auth_token">Twilio Auth Token</label><input id="twilio_auth_token" name="twilio_auth_token" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved token"></div>
-<div class="field"><label for="twilio_from">Twilio sender phone number</label><input id="twilio_from" name="twilio_from" type="tel" placeholder="+15557654321"></div></div>
+<div class="field"><label for="twilio_whatsapp_from">Twilio WhatsApp sender</label><input id="twilio_whatsapp_from" name="twilio_whatsapp_from" type="tel" placeholder="+15557654321"><div class="hint">Use the WhatsApp-enabled sender assigned to your Twilio account.</div></div>
+<div class="field"><label for="whatsapp_content_sid">WhatsApp template Content SID (optional)</label><input id="whatsapp_content_sid" name="whatsapp_content_sid" autocomplete="off" placeholder="HX…"><div class="hint">For alerts outside WhatsApp's 24-hour conversation window, add an approved Twilio template with placeholders {{1}} for status and {{2}} for the Ubisoft status page URL.</div></div></div>
 <div id="gotify-settings" class="section" hidden><div class="section-title">Gotify push notification</div>
 <div class="field"><label for="gotify_server">Gotify server URL</label><input id="gotify_server" name="gotify_server" type="url" placeholder="https://gotify.example.com"><div class="hint">Enter the server address, optionally including a base path. You can also paste the full address ending in /message.</div></div>
 <div class="field"><label for="gotify_app_token">Gotify application token</label><input id="gotify_app_token" name="gotify_app_token" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved token"><div class="hint">Create an application in Gotify and copy its application token. The token is stored privately and never shown again here.</div></div>
@@ -533,7 +558,7 @@ button{border:0;border-radius:9px;background:#88baff;color:#0c1820;font:750 14px
 const form=document.getElementById('settings-form'),message=document.getElementById('message');
 const labels={operational:'Online (Operational)',online:'Online',maintenance:'Maintenance',problems:'Problems',outage:'Outage',unknown:'Unknown'};
 function time(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?v:d.toLocaleString()}
-function method(v){document.getElementById('email-settings').hidden=v!=='email';document.getElementById('sms-settings').hidden=v!=='sms';document.getElementById('gotify-settings').hidden=v!=='gotify';for(const r of document.querySelectorAll('input[name="method"]'))r.checked=r.value===v}
+function method(v){document.getElementById('email-settings').hidden=v!=='email';document.getElementById('whatsapp-settings').hidden=v!=='whatsapp';document.getElementById('gotify-settings').hidden=v!=='gotify';for(const r of document.querySelectorAll('input[name="method"]'))r.checked=r.value===v}
 function render(data,syncSettings=true){
   const s=data.state||{},c=data.settings||{},st=s.status||'unknown';
   const fallbackOnline=st==='unknown'&&String(s.error||'').toLowerCase().includes('no unambiguous live status found');
@@ -545,10 +570,10 @@ function render(data,syncSettings=true){
   document.getElementById('last-checked').textContent=time(s.last_checked);
   document.getElementById('last-change').textContent=time(s.last_change);
   if(!syncSettings)return;
-  document.getElementById('alert-method').textContent=c.method==='email'?'Email':c.method==='sms'?'Phone message':c.method==='gotify'?'Gotify push':'Not set';
+  document.getElementById('alert-method').textContent=c.method==='email'?'Email':c.method==='whatsapp'?'WhatsApp':c.method==='gotify'?'Gotify push':'Not set';
   document.getElementById('interval').value=String(c.interval_minutes||5);
   method(c.method||'none');
-  for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','email_from','phone_to','twilio_account_sid','twilio_from','gotify_server','gotify_priority'])if(c[k]!==undefined)document.getElementById(k).value=c[k];
+  for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','email_from','whatsapp_to','twilio_account_sid','twilio_whatsapp_from','whatsapp_content_sid','gotify_server','gotify_priority'])if(c[k]!==undefined)document.getElementById(k).value=c[k];
   const selected=Array.isArray(c.notify_statuses)?c.notify_statuses:['operational'];
   for(const input of document.querySelectorAll('input[name="notify_statuses"]'))input.checked=selected.includes(input.value);
   if(c.has_smtp_password)document.getElementById('smtp_password').placeholder='Saved; leave blank to keep';
@@ -558,7 +583,7 @@ function render(data,syncSettings=true){
 for(const radio of document.querySelectorAll('input[name="method"]'))radio.addEventListener('change',()=>method(radio.value));
 let settingsLoaded=false;
 async function refresh(){const r=await fetch('/api/status');if(!r.ok)throw Error('Could not load status');render(await r.json(),!settingsLoaded);settingsLoaded=true}
-form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());data.notify_statuses=[...form.querySelectorAll('input[name="notify_statuses"]:checked')].map(input=>input.value);data.method=form.querySelector('input[name="method"]:checked')?.value||'none';if(data.method!=='email')for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','smtp_password','email_from'])delete data[k];if(data.method!=='sms')for(const k of ['phone_to','twilio_account_sid','twilio_auth_token','twilio_from'])delete data[k];if(data.method!=='gotify')for(const k of ['gotify_server','gotify_app_token','gotify_priority'])delete data[k];const b=document.getElementById('save-button');b.disabled=true;message.className='message';message.textContent='Saving…';try{const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not save settings');render(v);message.className='message ok';message.textContent='Settings saved.';document.getElementById('smtp_password').value='';document.getElementById('twilio_auth_token').value='';document.getElementById('gotify_app_token').value=''}catch(err){message.className='message error';message.textContent=err.message}finally{b.disabled=false}});
+form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());data.notify_statuses=[...form.querySelectorAll('input[name="notify_statuses"]:checked')].map(input=>input.value);data.method=form.querySelector('input[name="method"]:checked')?.value||'none';if(data.method!=='email')for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','smtp_password','email_from'])delete data[k];if(data.method!=='whatsapp')for(const k of ['whatsapp_to','twilio_account_sid','twilio_auth_token','twilio_whatsapp_from','whatsapp_content_sid'])delete data[k];if(data.method!=='gotify')for(const k of ['gotify_server','gotify_app_token','gotify_priority'])delete data[k];const b=document.getElementById('save-button');b.disabled=true;message.className='message';message.textContent='Saving…';try{const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not save settings');render(v);message.className='message ok';message.textContent='Settings saved.';document.getElementById('smtp_password').value='';document.getElementById('twilio_auth_token').value='';document.getElementById('gotify_app_token').value=''}catch(err){message.className='message error';message.textContent=err.message}finally{b.disabled=false}});
 document.getElementById('check-button').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Checking…';try{const r=await fetch('/api/check',{method:'POST'});render(await r.json(),false)}catch(err){message.className='message error';message.textContent=err.message}finally{b.disabled=false;b.textContent='Check now'}});
 document.getElementById('test-gotify-button').addEventListener('click',async e=>{const b=e.currentTarget,result=document.getElementById('gotify-test-message'),data=Object.fromEntries(new FormData(form).entries());b.disabled=true;b.textContent='Sending…';result.className='message';result.textContent='Sending test push…';try{const r=await fetch('/api/test-gotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||'Gotify test failed');result.className='message ok';result.textContent=v.message||'Test push accepted by Gotify.'}catch(err){result.className='message error';result.textContent=err.message}finally{b.disabled=false;b.textContent='Send test push'}});
 refresh().catch(err=>document.getElementById('status-sub').textContent=err.message);setInterval(()=>refresh().catch(()=>{}),15000);
@@ -596,6 +621,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/status":
             self.json_response(200, MONITOR.public_snapshot())
+        elif self.path == "/favicon.png":
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.send_header("Content-Length", str(len(FAVICON_BYTES)))
+            self.end_headers()
+            self.wfile.write(FAVICON_BYTES)
         elif self.path == "/background.png":
             body = BACKGROUND_PATH.read_bytes()
             self.send_response(200)
