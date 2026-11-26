@@ -1,6 +1,6 @@
 # The Division 2 Status Watch
 
-A small web app and background monitor for The Division 2. It checks Ubisoft's status display on a configurable 3–20 minute interval and sends one recovery alert when a previously reported maintenance, problem, or outage changes to operational.
+A small web app and background monitor for The Division 2. It checks Ubisoft's status display every 3, 5, 10, 15, 20, 25, 30, or 60 minutes and can send a notification when the reported status changes to any status you select.
 
 The monitor reads the status widget linked from [Ubisoft's The Division 2 status page](https://www.ubisoft.com/en-us/game/the-division/the-division-2/status). If the page is reachable but does not expose a clear live status, the dashboard shows Online as its default and the monitor waits for the next check. If the page cannot be fetched, the dashboard shows Unknown. It does not treat the four-item status legend as the current game status.
 
@@ -10,13 +10,13 @@ The monitor reads the status widget linked from [Ubisoft's The Division 2 status
 2. In Portainer, choose **Stacks** → **Add stack**. Select this folder or repository and use compose.yaml.
 3. Add a strong WEB_PASSWORD environment variable in the stack settings. WEB_USERNAME defaults to admin; you can change it. The stack will not start without WEB_PASSWORD.
 4. Deploy the stack. Open http://SERVER-IP:3274 (or the host port set with PORT) and sign in with those credentials.
-5. Choose the interval and notification method, enter the delivery settings, and save.
+5. Choose the interval, select which status changes should trigger alerts, choose a notification method, enter the delivery settings, and save. Online (Operational) is selected by default to preserve the original recovery alert behaviour.
 
 The named division2-status-data volume stores settings and last status across restarts. The web page uses HTTP Basic Authentication. Put it behind HTTPS before exposing it to the public internet.
 
 ## Gotify push notifications
 
-Choose **Gotify push**, enter your Gotify server URL, and paste an application token from an application created in Gotify. Select **Send test push** to check the setup before saving; the test uses the values currently entered and does not change your saved settings. If the token field is blank, the saved token is used. The app posts the recovery message to Gotify's message endpoint with the token in the X-Gotify-Key header. You can use a server URL with a reverse-proxy base path, or paste a URL ending in /message. Gotify priority ranges from 0 to 10; the default of 5 produces a sound in the Gotify Android app. Install and connect the Gotify app on your phone to receive push notifications.
+Choose **Gotify push**, enter your Gotify server URL, and paste an application token from an application created in Gotify. Select **Send test push** to check the setup before saving; the test uses the values currently entered and does not change your saved settings. If the token field is blank, the saved token is used. The app posts selected status notifications to Gotify's message endpoint with the token in the X-Gotify-Key header. You can use a server URL with a reverse-proxy base path, or paste a URL ending in /message. Gotify priority ranges from 0 to 10; the default of 5 produces a sound in the Gotify Android app. Install and connect the Gotify app on your phone to receive push notifications.
 
 See Gotify's [push message instructions](https://gotify.net/docs/pushmsg) and [priority guide](https://gotify.net/docs/priority) for creating application tokens and choosing notification behaviour.
 
@@ -31,7 +31,8 @@ Phone alerts are sent as SMS through Twilio. Enter the Twilio account SID, Auth 
 ## Behavior
 
 - The first successful check records a baseline and does not send an alert.
-- A notification is sent only for a transition from Maintenance, Problems, or Outage to Operational.
+- Select any combination of Online (Operational), Maintenance, Problems, and Outage. A notification is sent once when Ubisoft changes to a selected status; staying in that status does not repeat the alert.
+- Online (Operational) is selected by default, matching the previous recovery notification behaviour.
 - Temporary fetch failures show as Unknown; when no unambiguous live status is found, the dashboard displays Online as its default. Neither case counts as a status change.
 - Notification credentials are stored in the persistent Docker volume and are not returned to the browser after saving.
 - The monitor reports what Ubisoft's page publishes; it cannot verify connectivity from a particular player's device or platform.
