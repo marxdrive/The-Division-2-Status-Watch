@@ -24,15 +24,18 @@ See Gotify's [push message instructions](https://gotify.net/docs/pushmsg) and [p
 
 Use your mail provider's SMTP server, port, and connection security setting. Common combinations are STARTTLS on port 587 or SSL/TLS on port 465. Enter the sender address accepted by that provider. An SMTP app password may be required instead of the account password.
 
-## Phone messages
+## WhatsApp notifications
 
-Phone alerts are sent as SMS through Twilio. Enter the Twilio account SID, Auth Token, Twilio sender number, and your phone number. Numbers should use international format, such as +15551234567. Twilio may require a verified recipient or an SMS-enabled number, depending on your account and country.
+WhatsApp alerts are sent through Twilio. Enter your Twilio Account SID and Auth Token, your WhatsApp number, and a WhatsApp-enabled sender assigned to your Twilio account. Use international number format, such as +15551234567; the app adds the WhatsApp address prefix.
+
+For proactive alerts outside WhatsApp's 24-hour customer service window, create an approved template in Twilio's Content Template Builder and enter its Content SID. The template should include `{{1}}` for the reported status and `{{2}}` for the Ubisoft status page URL. Without a Content SID, the app sends a free-form message, which can only be delivered while the 24-hour window is open. Twilio may require the recipient to join your WhatsApp Sandbox or opt in to your approved sender. See Twilio's [WhatsApp quickstart](https://www.twilio.com/docs/whatsapp/quickstart) and [template sending guide](https://www.twilio.com/docs/content/send-templates-created-with-the-content-template-builder).
 
 ## Behavior
 
 - The first successful check records a baseline and does not send an alert.
 - Select any combination of Online (Operational), Maintenance, Problems, and Outage. A notification is sent once when Ubisoft changes to a selected status; staying in that status does not repeat the alert.
 - Online (Operational) is selected by default, matching the previous recovery notification behaviour.
+- WhatsApp delivery uses Twilio. A Twilio-approved template is needed for proactive messages outside a 24-hour customer service window.
 - Temporary fetch failures show as Unknown; when no unambiguous live status is found, the dashboard displays Online as its default. Neither case counts as a status change.
 - Notification credentials are stored in the persistent Docker volume and are not returned to the browser after saving.
 - The monitor reports what Ubisoft's page publishes; it cannot verify connectivity from a particular player's device or platform.
