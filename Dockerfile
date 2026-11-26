@@ -6,7 +6,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DATA_DIR=/data
 
 WORKDIR /app
-COPY app.py /app/app.py
+COPY app.py background.png /app/
 
 RUN addgroup -S app && adduser -S -G app app \
     && mkdir -p /data \

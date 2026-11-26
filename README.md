@@ -2,7 +2,7 @@
 
 A small web app and background monitor for The Division 2. It checks Ubisoft's status display on a configurable 3–20 minute interval and sends one recovery alert when a previously reported maintenance, problem, or outage changes to operational.
 
-The monitor reads the status widget linked from [Ubisoft's The Division 2 status page](https://www.ubisoft.com/en-us/game/the-division/the-division-2/status). If the page cannot be fetched or does not expose a clear live status, the dashboard says Unknown and the monitor waits for the next check. It does not treat the four-item status legend as the current game status.
+The monitor reads the status widget linked from [Ubisoft's The Division 2 status page](https://www.ubisoft.com/en-us/game/the-division/the-division-2/status). If the page is reachable but does not expose a clear live status, the dashboard shows Online as its default and the monitor waits for the next check. If the page cannot be fetched, the dashboard shows Unknown. It does not treat the four-item status legend as the current game status.
 
 ## Deploy in Portainer
 
@@ -16,7 +16,7 @@ The named division2-status-data volume stores settings and last status across re
 
 ## Gotify push notifications
 
-Choose **Gotify push**, enter your Gotify server URL, and paste an application token from an application created in Gotify. The app posts the recovery message to Gotify's message endpoint with the token in the X-Gotify-Key header. You can use a server URL with a reverse-proxy base path, or paste a URL ending in /message. Gotify priority ranges from 0 to 10; the default of 5 produces a sound in the Gotify Android app. Install and connect the Gotify app on your phone to receive push notifications.
+Choose **Gotify push**, enter your Gotify server URL, and paste an application token from an application created in Gotify. Select **Send test push** to check the setup before saving; the test uses the values currently entered and does not change your saved settings. If the token field is blank, the saved token is used. The app posts the recovery message to Gotify's message endpoint with the token in the X-Gotify-Key header. You can use a server URL with a reverse-proxy base path, or paste a URL ending in /message. Gotify priority ranges from 0 to 10; the default of 5 produces a sound in the Gotify Android app. Install and connect the Gotify app on your phone to receive push notifications.
 
 See Gotify's [push message instructions](https://gotify.net/docs/pushmsg) and [priority guide](https://gotify.net/docs/priority) for creating application tokens and choosing notification behaviour.
 
@@ -28,11 +28,10 @@ Use your mail provider's SMTP server, port, and connection security setting. Com
 
 Phone alerts are sent as SMS through Twilio. Enter the Twilio account SID, Auth Token, Twilio sender number, and your phone number. Numbers should use international format, such as +15551234567. Twilio may require a verified recipient or an SMS-enabled number, depending on your account and country.
 
-
 ## Behavior
 
 - The first successful check records a baseline and does not send an alert.
 - A notification is sent only for a transition from Maintenance, Problems, or Outage to Operational.
-- Temporary fetch failures and unrecognised page markup show as Unknown and do not count as status changes.
+- Temporary fetch failures show as Unknown; when no unambiguous live status is found, the dashboard displays Online as its default. Neither case counts as a status change.
 - Notification credentials are stored in the persistent Docker volume and are not returned to the browser after saving.
 - The monitor reports what Ubisoft's page publishes; it cannot verify connectivity from a particular player's device or platform.

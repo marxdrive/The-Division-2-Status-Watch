@@ -25,6 +25,7 @@ WIDGET_URL = "https://ubistatic-a.akamaihd.net/0115/tctd2/status.html"
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
 SETTINGS_PATH = DATA_DIR / "settings.json"
 STATE_PATH = DATA_DIR / "state.json"
+BACKGROUND_PATH = Path(__file__).with_name("background.png")
 WEB_USERNAME = os.environ.get("WEB_USERNAME", "admin")
 WEB_PASSWORD = os.environ["WEB_PASSWORD"]
 PORT = int(os.environ.get("PORT", "8080"))
@@ -217,7 +218,11 @@ def send_sms(settings: dict, body: str) -> None:
         response.read(4096)
 
 
-def send_gotify(settings: dict, body: str) -> None:
+def send_gotify(
+    settings: dict,
+    body: str,
+    title: str = "The Division 2 is back online",
+) -> None:
     server = settings["gotify_server"].strip().rstrip("/")
     if server.endswith("/message"):
         server = server[:-8]
@@ -229,7 +234,7 @@ def send_gotify(settings: dict, body: str) -> None:
     request = Request(
         server + "/message",
         data=json.dumps({
-            "title": "The Division 2 is back online",
+            "title": title,
             "message": body,
             "priority": int(settings["gotify_priority"]),
         }).encode("utf-8"),
@@ -321,6 +326,33 @@ class Monitor:
             self.wake.set()
         return self.public_snapshot()
 
+    def test_gotify(self, incoming: dict) -> None:
+        with self.lock:
+            settings = self.settings.copy()
+        server = str(incoming.get("gotify_server", settings["gotify_server"])).strip()
+        token_input = str(incoming.get("gotify_app_token", "")).strip()
+        token = token_input or settings["gotify_app_token"]
+        try:
+            priority = int(incoming.get("gotify_priority", settings["gotify_priority"]))
+        except (TypeError, ValueError):
+            raise ValueError("Gotify priority must be a number from 0 to 10.")
+        if not server:
+            raise ValueError("Enter your Gotify server URL.")
+        if not token:
+            raise ValueError("Enter a Gotify application token.")
+        if not 0 <= priority <= 10:
+            raise ValueError("Gotify priority must be from 0 to 10.")
+        settings.update({
+            "gotify_server": server,
+            "gotify_app_token": token,
+            "gotify_priority": priority,
+        })
+        send_gotify(
+            settings,
+            "This is a test push from Division 2 Status Watch. If you received it, your Gotify setup is working.",
+            title="Division 2 Status Watch test",
+        )
+
     def check_once(self) -> dict:
         if not self.check_lock.acquire(blocking=False):
             return self.public_snapshot()
@@ -347,7 +379,7 @@ class Monitor:
             if status == "operational" and pending:
                 if settings.get("method") not in ("email", "sms", "gotify"):
                     with self.lock:
-                        self.state["notification_error"] = "Recovery alert pending. Choose Email or Phone message in settings."
+                        self.state["notification_error"] = "Recovery alert pending. Choose Email, Phone message, or Gotify in settings."
                         write_json(STATE_PATH, self.state)
                 else:
                     try:
@@ -381,15 +413,15 @@ INDEX_HTML = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#10171d"><title>Division 2 Status Watch</title>
 <style>
 :root{color-scheme:dark;--bg:#10171d;--panel:#19232b;--line:#2a3944;--muted:#9aadb9;--text:#eef4f6;--green:#54d69a;--amber:#ffc86a;--red:#ff7676;--blue:#83b8ff}
-*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 82% -8%,#283746 0,transparent 38%),var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+*{box-sizing:border-box}body{margin:0;background-color:var(--bg);background-image:radial-gradient(ellipse at 82% -8%,rgba(40,55,70,.48) 0,transparent 38%),linear-gradient(rgba(9,14,19,.58),rgba(9,14,19,.78)),url('/background.png');background-position:center,center,center;background-size:cover,cover,cover;background-attachment:fixed,fixed,fixed;background-repeat:no-repeat;color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
 main{width:min(960px,calc(100% - 32px));margin:44px auto 72px}header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:24px}
 .eyebrow{text-transform:uppercase;letter-spacing:.13em;color:var(--blue);font-size:11px;font-weight:750}h1{margin:4px 0 0;font-size:clamp(25px,4vw,36px);line-height:1.16;letter-spacing:-.035em}
 .logo{height:44px;width:44px;display:grid;place-items:center;border:1px solid #405361;border-radius:14px;color:var(--blue);font-weight:850;font-size:18px}
-.card{background:linear-gradient(145deg,#1c2831,#172128);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 12px 34px #0002}
+.card{background:linear-gradient(145deg,rgba(28,40,49,.91),rgba(23,33,40,.94));border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 12px 34px #0002;backdrop-filter:blur(3px)}
 .status-card{display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center;margin-bottom:18px}.label{color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.09em}
 .status-name{font-size:28px;font-weight:760;letter-spacing:-.03em;margin:2px 0}.status-sub{color:var(--muted);font-size:13px}
 .status-pill{border:1px solid var(--line);border-radius:999px;padding:8px 12px;font-size:12px;font-weight:750;text-transform:uppercase;letter-spacing:.08em;white-space:nowrap}
-.status-pill.operational{color:var(--green);border-color:#39795f}.status-pill.maintenance,.status-pill.problems{color:var(--amber);border-color:#7d673c}.status-pill.outage{color:var(--red);border-color:#7b4242}.status-pill.unknown{color:var(--muted)}
+.status-pill.operational,.status-pill.online{color:var(--green);border-color:#39795f}.status-pill.maintenance,.status-pill.problems{color:var(--amber);border-color:#7d673c}.status-pill.outage{color:var(--red);border-color:#7b4242}.status-pill.unknown{color:var(--muted)}
 .columns{display:grid;grid-template-columns:1.05fr .95fr;gap:18px;align-items:start}h2{margin:0 0 4px;font-size:19px;letter-spacing:-.02em}.intro{color:var(--muted);margin:0 0 20px;font-size:13px}
 .field{margin:0 0 14px}label{display:block;font-size:13px;font-weight:650;margin-bottom:6px}
 input,select{width:100%;border:1px solid #3a4a55;border-radius:9px;background:#111a20;color:var(--text);padding:10px 11px;font:inherit;outline:none}
@@ -426,24 +458,27 @@ button{border:0;border-radius:9px;background:#88baff;color:#0c1820;font:750 14px
 <div id="gotify-settings" class="section" hidden><div class="section-title">Gotify push notification</div>
 <div class="field"><label for="gotify_server">Gotify server URL</label><input id="gotify_server" name="gotify_server" type="url" placeholder="https://gotify.example.com"><div class="hint">Enter the server address, optionally including a base path. You can also paste the full address ending in /message.</div></div>
 <div class="field"><label for="gotify_app_token">Gotify application token</label><input id="gotify_app_token" name="gotify_app_token" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved token"><div class="hint">Create an application in Gotify and copy its application token. The token is stored privately and never shown again here.</div></div>
-<div class="field"><label for="gotify_priority">Notification priority</label><select id="gotify_priority" name="gotify_priority"><option value="0">0 — No notification</option><option value="1">1 — Quiet</option><option value="2">2 — Quiet</option><option value="3">3 — Quiet</option><option value="4">4 — Sound</option><option value="5">5 — Sound (default)</option><option value="6">6 — Sound</option><option value="7">7 — Sound</option><option value="8">8 — Sound and vibration</option><option value="9">9 — Sound and vibration</option><option value="10">10 — Sound and vibration</option></select></div></div>
+<div class="field"><label for="gotify_priority">Notification priority</label><select id="gotify_priority" name="gotify_priority"><option value="0">0 — No notification</option><option value="1">1 — Quiet</option><option value="2">2 — Quiet</option><option value="3">3 — Quiet</option><option value="4">4 — Sound</option><option value="5">5 — Sound (default)</option><option value="6">6 — Sound</option><option value="7">7 — Sound</option><option value="8">8 — Sound and vibration</option><option value="9">9 — Sound and vibration</option><option value="10">10 — Sound and vibration</option></select></div>
+<div class="actions"><button id="test-gotify-button" class="secondary" type="button">Send test push</button><div id="gotify-test-message" class="message" role="status"></div></div></div>
 <div class="actions"><button id="save-button" type="submit">Save settings</button><div id="message" class="message" role="status"></div></div></form></section>
 <aside class="card"><h2>Monitor details</h2><p class="intro">Alerts are sent when Ubisoft reports a return to operational after maintenance, problems, or an outage.</p>
 <div class="info-list"><div class="info-row"><span>Last checked</span><strong id="last-checked">—</strong></div><div class="info-row"><span>Last status change</span><strong id="last-change">—</strong></div><div class="info-row"><span>Alert method</span><strong id="alert-method">Not set</strong></div></div>
-<div id="monitor-note" class="notice">If Ubisoft's page does not expose a clear live status, this dashboard shows Unknown and waits for the next check.</div>
+<div id="monitor-note" class="notice">If Ubisoft's page cannot be reached, the dashboard shows Unknown. If no unambiguous live status is found, it displays Online as the default and waits for the next check.</div>
 <a class="source" href="https://www.ubisoft.com/en-us/game/the-division/the-division-2/status" target="_blank" rel="noreferrer">Open Ubisoft status page ↗</a>
 <div class="actions"><button id="check-button" class="secondary" type="button">Check now</button></div></aside></div></main>
 <script>
 const form=document.getElementById('settings-form'),message=document.getElementById('message');
-const labels={operational:'Operational',maintenance:'Maintenance',problems:'Problems',outage:'Outage',unknown:'Unknown'};
+const labels={operational:'Operational',online:'Online',maintenance:'Maintenance',problems:'Problems',outage:'Outage',unknown:'Unknown'};
 function time(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?v:d.toLocaleString()}
 function method(v){document.getElementById('email-settings').hidden=v!=='email';document.getElementById('sms-settings').hidden=v!=='sms';document.getElementById('gotify-settings').hidden=v!=='gotify';for(const r of document.querySelectorAll('input[name="method"]'))r.checked=r.value===v}
 function render(data,syncSettings=true){
   const s=data.state||{},c=data.settings||{},st=s.status||'unknown';
-  document.getElementById('status-name').textContent=labels[st]||'Unknown';
-  document.getElementById('status-pill').textContent=labels[st]||'Unknown';
-  document.getElementById('status-pill').className='status-pill '+st;
-  document.getElementById('status-sub').textContent=s.last_checked?(s.error||s.notification_error||('Updated '+time(s.last_checked))):'Waiting for first check';
+  const fallbackOnline=st==='unknown'&&String(s.error||'').toLowerCase().includes('no unambiguous live status found');
+  const shownStatus=fallbackOnline?'online':st;
+  document.getElementById('status-name').textContent=labels[shownStatus]||'Unknown';
+  document.getElementById('status-pill').textContent=labels[shownStatus]||'Unknown';
+  document.getElementById('status-pill').className='status-pill '+shownStatus;
+  document.getElementById('status-sub').textContent=s.last_checked?(s.notification_error||(fallbackOnline?'No unambiguous live status found; showing default Online.':s.error||('Updated '+time(s.last_checked)))):'Waiting for first check';
   document.getElementById('last-checked').textContent=time(s.last_checked);
   document.getElementById('last-change').textContent=time(s.last_change);
   if(!syncSettings)return;
@@ -460,6 +495,7 @@ let settingsLoaded=false;
 async function refresh(){const r=await fetch('/api/status');if(!r.ok)throw Error('Could not load status');render(await r.json(),!settingsLoaded);settingsLoaded=true}
 form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());data.method=form.querySelector('input[name="method"]:checked')?.value||'none';if(data.method!=='email')for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','smtp_password','email_from'])delete data[k];if(data.method!=='sms')for(const k of ['phone_to','twilio_account_sid','twilio_auth_token','twilio_from'])delete data[k];if(data.method!=='gotify')for(const k of ['gotify_server','gotify_app_token','gotify_priority'])delete data[k];const b=document.getElementById('save-button');b.disabled=true;message.className='message';message.textContent='Saving…';try{const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not save settings');render(v);message.className='message ok';message.textContent='Settings saved.';document.getElementById('smtp_password').value='';document.getElementById('twilio_auth_token').value='';document.getElementById('gotify_app_token').value=''}catch(err){message.className='message error';message.textContent=err.message}finally{b.disabled=false}});
 document.getElementById('check-button').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Checking…';try{const r=await fetch('/api/check',{method:'POST'});render(await r.json(),false)}catch(err){message.className='message error';message.textContent=err.message}finally{b.disabled=false;b.textContent='Check now'}});
+document.getElementById('test-gotify-button').addEventListener('click',async e=>{const b=e.currentTarget,result=document.getElementById('gotify-test-message'),data=Object.fromEntries(new FormData(form).entries());b.disabled=true;b.textContent='Sending…';result.className='message';result.textContent='Sending test push…';try{const r=await fetch('/api/test-gotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||'Gotify test failed');result.className='message ok';result.textContent=v.message||'Test push accepted by Gotify.'}catch(err){result.className='message error';result.textContent=err.message}finally{b.disabled=false;b.textContent='Send test push'}});
 refresh().catch(err=>document.getElementById('status-sub').textContent=err.message);setInterval(()=>refresh().catch(()=>{}),15000);
 </script></body></html>"""
 
@@ -495,6 +531,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if self.path == "/api/status":
             self.json_response(200, MONITOR.public_snapshot())
+        elif self.path == "/background.png":
+            body = BACKGROUND_PATH.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/png")
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif self.path in ("/", "/index.html"):
             body = INDEX_HTML.encode()
             self.send_response(200)
@@ -509,7 +553,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self.authorized():
             return
-        if self.path not in ("/api/settings", "/api/check"):
+        if self.path not in ("/api/settings", "/api/check", "/api/test-gotify"):
             self.send_error(404)
             return
         try:
@@ -518,7 +562,17 @@ class Handler(BaseHTTPRequestHandler):
                 return
             length = min(int(self.headers.get("Content-Length", "0")), 65536)
             incoming = json.loads(self.rfile.read(length).decode())
-            self.json_response(200, MONITOR.save_settings(incoming))
+            if self.path == "/api/settings":
+                self.json_response(200, MONITOR.save_settings(incoming))
+            else:
+                try:
+                    MONITOR.test_gotify(incoming)
+                    self.json_response(200, {"message": "Gotify accepted the test push. Check your phone."})
+                except ValueError as exc:
+                    self.json_response(400, {"error": str(exc)})
+                except Exception as exc:
+                    log.warning("Gotify test push failed: %s", exc)
+                    self.json_response(502, {"error": f"Gotify test failed: {exc}"})
         except (ValueError, json.JSONDecodeError) as exc:
             self.json_response(400, {"error": str(exc)})
         except Exception:
