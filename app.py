@@ -38,6 +38,7 @@ STATES = {
 }
 ALLOWED_INTERVALS = (3, 5, 10, 15, 20, 25, 30, 60)
 ALERT_STATES = ("operational", "maintenance", "problems", "outage")
+META_GRAPH_VERSION = "v27.0"
 STATUS_LABELS = {
     "operational": "Online (Operational)",
     "maintenance": "Maintenance",
@@ -70,8 +71,8 @@ def default_settings() -> dict:
         "method": "none", "email_to": "",
         "smtp_host": "", "smtp_port": 587, "smtp_security": "starttls",
         "smtp_username": "", "smtp_password": "", "email_from": "",
-        "whatsapp_to": "", "twilio_account_sid": "", "twilio_auth_token": "",
-        "twilio_whatsapp_from": "", "whatsapp_content_sid": "",
+        "whatsapp_to": "", "whatsapp_phone_number_id": "", "whatsapp_access_token": "",
+        "whatsapp_template_name": "", "whatsapp_template_language": "en_US",
         "gotify_server": "", "gotify_app_token": "",
         "gotify_priority": 5,
     }
@@ -82,9 +83,17 @@ def get_settings() -> dict:
     stored = read_json(SETTINGS_PATH, {})
     result.update(stored)
     result["whatsapp_to"] = result.get("whatsapp_to") or stored.get("phone_to", "")
-    result["twilio_whatsapp_from"] = result.get("twilio_whatsapp_from") or stored.get("twilio_from", "")
-    if result.get("method") == "sms":
-        result["method"] = "whatsapp"
+    legacy_keys = (
+        "phone_to", "twilio_account_sid", "twilio_auth_token", "twilio_from",
+        "twilio_whatsapp_from", "whatsapp_content_sid",
+    )
+    had_legacy_settings = any(key in stored for key in legacy_keys)
+    if result.get("method") == "sms" or (had_legacy_settings and result.get("method") == "whatsapp"):
+        result["method"] = "none"
+    for key in legacy_keys:
+        result.pop(key, None)
+    if had_legacy_settings:
+        write_json(SETTINGS_PATH, result)
     result.pop("phone_to", None)
     result.pop("twilio_from", None)
     try:
@@ -229,30 +238,31 @@ def send_email(settings: dict, subject: str, body: str) -> None:
             smtp.send_message(message)
 
 
-def send_whatsapp(settings: dict, body: str, status_label: str) -> None:
-    sid = settings["twilio_account_sid"]
-    url = f"https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
-    def channel_address(value: str) -> str:
-        value = value.strip()
-        if value.lower().startswith("whatsapp:"):
-            value = value.split(":", 1)[1]
-        return "whatsapp:" + value
-
-    to = channel_address(settings["whatsapp_to"])
-    sender = channel_address(settings["twilio_whatsapp_from"])
-    fields = {"To": to, "From": sender}
-    content_sid = settings.get("whatsapp_content_sid", "").strip()
-    if content_sid:
-        fields["ContentSid"] = content_sid
-        fields["ContentVariables"] = json.dumps({"1": status_label, "2": PAGE_URL})
-    else:
-        fields["Body"] = body
-    data = urlencode(fields).encode("utf-8")
-    token = base64.b64encode(f"{sid}:{settings['twilio_auth_token']}".encode()).decode("ascii")
-    request = Request(url, data=data, method="POST", headers={
-        "Authorization": f"Basic {token}",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": "Division2StatusWatch/1.0",
+def send_whatsapp(settings: dict, status_label: str) -> None:
+    phone_number_id = settings["whatsapp_phone_number_id"].strip()
+    recipient = re.sub(r"\D", "", settings["whatsapp_to"])
+    url = f"https://graph.facebook.com/{META_GRAPH_VERSION}/{phone_number_id}/messages"
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": recipient,
+        "type": "template",
+        "template": {
+            "name": settings["whatsapp_template_name"].strip(),
+            "language": {"code": settings["whatsapp_template_language"].strip()},
+            "components": [{
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": status_label},
+                    {"type": "text", "text": PAGE_URL},
+                ],
+            }],
+        },
+    }
+    request = Request(url, data=json.dumps(payload).encode("utf-8"), method="POST", headers={
+        "Authorization": f"Bearer {settings['whatsapp_access_token']}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "TheDivision2StatusWatch/1.0",
     })
     with urlopen(request, timeout=20) as response:
         response.read(4096)
@@ -329,7 +339,7 @@ def notify_status(settings: dict, status: str) -> None:
     if settings.get("method") == "email":
         send_email(settings, subject, body)
     elif settings.get("method") == "whatsapp":
-        send_whatsapp(settings, f"{message} Ubisoft status: {PAGE_URL}", STATUS_LABELS[status])
+        send_whatsapp(settings, STATUS_LABELS[status])
     elif settings.get("method") == "gotify":
         send_gotify(settings, body, title=subject)
     else:
@@ -351,11 +361,11 @@ class Monitor:
             safe = {key: s[key] for key in (
                 "interval_minutes", "notify_statuses", "method", "email_to", "smtp_host", "smtp_port",
                 "smtp_security", "smtp_username", "email_from", "whatsapp_to",
-                "twilio_account_sid", "twilio_whatsapp_from", "whatsapp_content_sid",
+                "whatsapp_phone_number_id", "whatsapp_template_name", "whatsapp_template_language",
                 "gotify_server", "gotify_priority",
             )}
             safe["has_smtp_password"] = bool(s["smtp_password"])
-            safe["has_twilio_auth_token"] = bool(s["twilio_auth_token"])
+            safe["has_whatsapp_access_token"] = bool(s["whatsapp_access_token"])
             safe["has_gotify_app_token"] = bool(s["gotify_app_token"])
             return {"state": self.state.copy(), "settings": safe}
 
@@ -364,8 +374,8 @@ class Monitor:
             updated = self.settings.copy()
             ordinary = (
                 "method", "email_to", "smtp_host", "smtp_security", "smtp_username",
-                "email_from", "whatsapp_to", "twilio_account_sid", "twilio_whatsapp_from",
-                "whatsapp_content_sid",
+                "email_from", "whatsapp_to", "whatsapp_phone_number_id",
+                "whatsapp_template_name", "whatsapp_template_language",
                 "gotify_server",
             )
             for key in ordinary:
@@ -376,7 +386,7 @@ class Monitor:
                 if not isinstance(selected, list) or any(status not in ALERT_STATES for status in selected):
                     raise ValueError("Choose valid status alerts.")
                 updated["notify_statuses"] = [status for status in ALERT_STATES if status in selected]
-            for key in ("smtp_password", "twilio_auth_token", "gotify_app_token"):
+            for key in ("smtp_password", "whatsapp_access_token", "gotify_app_token"):
                 value = str(incoming.get(key, "")).strip()
                 if value:
                     updated[key] = value
@@ -397,8 +407,11 @@ class Monitor:
                 raise ValueError("Choose a valid email connection security setting.")
             if updated["method"] == "email" and not all(updated[k] for k in ("email_to", "smtp_host", "email_from")):
                 raise ValueError("Enter the recipient email, SMTP server, and sender email.")
-            if updated["method"] == "whatsapp" and not all(updated[k] for k in ("whatsapp_to", "twilio_account_sid", "twilio_auth_token", "twilio_whatsapp_from")):
-                raise ValueError("Enter the WhatsApp recipient, approved sender, and Twilio account credentials.")
+            if updated["method"] == "whatsapp" and not all(updated[k] for k in (
+                "whatsapp_to", "whatsapp_phone_number_id", "whatsapp_access_token",
+                "whatsapp_template_name", "whatsapp_template_language",
+            )):
+                raise ValueError("Enter your WhatsApp number, Phone Number ID, access token, template name, and language.")
             if updated["method"] == "gotify" and not all(updated[k] for k in ("gotify_server", "gotify_app_token")):
                 raise ValueError("Enter your Gotify server URL and application token.")
             self.settings = updated
@@ -537,12 +550,12 @@ button{border:0;border-radius:9px;background:#88baff;color:#0c1820;font:750 14px
 <div class="inline"><div class="field"><label for="smtp_security">Connection security</label><select id="smtp_security" name="smtp_security"><option value="starttls">STARTTLS (usually 587)</option><option value="ssl">SSL/TLS (usually 465)</option><option value="none">None</option></select></div><div class="field"><label for="email_from">Sender email</label><input id="email_from" name="email_from" type="email" placeholder="alerts@example.com"></div></div>
 <div class="field"><label for="smtp_username">SMTP username</label><input id="smtp_username" name="smtp_username" autocomplete="username" placeholder="Optional if relay is allowed"></div>
 <div class="field"><label for="smtp_password">SMTP password</label><input id="smtp_password" name="smtp_password" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved password"><div class="hint">A mail provider may require an app password. Saved passwords are never shown here.</div></div></div>
-<div id="whatsapp-settings" class="section" hidden><div class="section-title">WhatsApp messages with Twilio</div>
-<div class="field"><label for="whatsapp_to">Your WhatsApp number</label><input id="whatsapp_to" name="whatsapp_to" type="tel" autocomplete="tel" placeholder="+15551234567"><div class="hint">Use international format, including + and country code. The app adds WhatsApp addressing automatically.</div></div>
-<div class="field"><label for="twilio_account_sid">Twilio Account SID</label><input id="twilio_account_sid" name="twilio_account_sid" autocomplete="off" placeholder="AC…"></div>
-<div class="field"><label for="twilio_auth_token">Twilio Auth Token</label><input id="twilio_auth_token" name="twilio_auth_token" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved token"></div>
-<div class="field"><label for="twilio_whatsapp_from">Twilio WhatsApp sender</label><input id="twilio_whatsapp_from" name="twilio_whatsapp_from" type="tel" placeholder="+15557654321"><div class="hint">Use the WhatsApp-enabled sender assigned to your Twilio account.</div></div>
-<div class="field"><label for="whatsapp_content_sid">WhatsApp template Content SID (optional)</label><input id="whatsapp_content_sid" name="whatsapp_content_sid" autocomplete="off" placeholder="HX…"><div class="hint">For alerts outside WhatsApp's 24-hour conversation window, add an approved Twilio template with placeholders {{1}} for status and {{2}} for the Ubisoft status page URL.</div></div></div>
+<div id="whatsapp-settings" class="section" hidden><div class="section-title">WhatsApp Cloud API (Meta)</div>
+<div class="field"><label for="whatsapp_to">Your WhatsApp number</label><input id="whatsapp_to" name="whatsapp_to" type="tel" autocomplete="tel" placeholder="+15551234567"><div class="hint">Use international format, including + and country code.</div></div>
+<div class="field"><label for="whatsapp_phone_number_id">WhatsApp Phone Number ID</label><input id="whatsapp_phone_number_id" name="whatsapp_phone_number_id" autocomplete="off" placeholder="Phone Number ID from Meta"></div>
+<div class="field"><label for="whatsapp_access_token">Meta access token</label><input id="whatsapp_access_token" name="whatsapp_access_token" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved token"><div class="hint">Use an access token with WhatsApp Business messaging permission. The token is stored privately.</div></div>
+<div class="field"><label for="whatsapp_template_name">Approved message template name</label><input id="whatsapp_template_name" name="whatsapp_template_name" autocomplete="off" placeholder="division2_status_alert"></div>
+<div class="field"><label for="whatsapp_template_language">Template language code</label><input id="whatsapp_template_language" name="whatsapp_template_language" autocomplete="off" value="en_US" placeholder="en_US"><div class="hint">The template must have two body placeholders: {{1}} for the status and {{2}} for the Ubisoft status page URL.</div></div></div>
 <div id="gotify-settings" class="section" hidden><div class="section-title">Gotify push notification</div>
 <div class="field"><label for="gotify_server">Gotify server URL</label><input id="gotify_server" name="gotify_server" type="url" placeholder="https://gotify.example.com"><div class="hint">Enter the server address, optionally including a base path. You can also paste the full address ending in /message.</div></div>
 <div class="field"><label for="gotify_app_token">Gotify application token</label><input id="gotify_app_token" name="gotify_app_token" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved token"><div class="hint">Create an application in Gotify and copy its application token. The token is stored privately and never shown again here.</div></div>
@@ -573,17 +586,17 @@ function render(data,syncSettings=true){
   document.getElementById('alert-method').textContent=c.method==='email'?'Email':c.method==='whatsapp'?'WhatsApp':c.method==='gotify'?'Gotify push':'Not set';
   document.getElementById('interval').value=String(c.interval_minutes||5);
   method(c.method||'none');
-  for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','email_from','whatsapp_to','twilio_account_sid','twilio_whatsapp_from','whatsapp_content_sid','gotify_server','gotify_priority'])if(c[k]!==undefined)document.getElementById(k).value=c[k];
+  for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','email_from','whatsapp_to','whatsapp_phone_number_id','whatsapp_template_name','whatsapp_template_language','gotify_server','gotify_priority'])if(c[k]!==undefined)document.getElementById(k).value=c[k];
   const selected=Array.isArray(c.notify_statuses)?c.notify_statuses:['operational'];
   for(const input of document.querySelectorAll('input[name="notify_statuses"]'))input.checked=selected.includes(input.value);
   if(c.has_smtp_password)document.getElementById('smtp_password').placeholder='Saved; leave blank to keep';
-  if(c.has_twilio_auth_token)document.getElementById('twilio_auth_token').placeholder='Saved; leave blank to keep';
+  if(c.has_whatsapp_access_token)document.getElementById('whatsapp_access_token').placeholder='Saved; leave blank to keep';
   if(c.has_gotify_app_token)document.getElementById('gotify_app_token').placeholder='Saved; leave blank to keep';
 }
 for(const radio of document.querySelectorAll('input[name="method"]'))radio.addEventListener('change',()=>method(radio.value));
 let settingsLoaded=false;
 async function refresh(){const r=await fetch('/api/status');if(!r.ok)throw Error('Could not load status');render(await r.json(),!settingsLoaded);settingsLoaded=true}
-form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());data.notify_statuses=[...form.querySelectorAll('input[name="notify_statuses"]:checked')].map(input=>input.value);data.method=form.querySelector('input[name="method"]:checked')?.value||'none';if(data.method!=='email')for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','smtp_password','email_from'])delete data[k];if(data.method!=='whatsapp')for(const k of ['whatsapp_to','twilio_account_sid','twilio_auth_token','twilio_whatsapp_from','whatsapp_content_sid'])delete data[k];if(data.method!=='gotify')for(const k of ['gotify_server','gotify_app_token','gotify_priority'])delete data[k];const b=document.getElementById('save-button');b.disabled=true;message.className='message';message.textContent='Saving…';try{const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not save settings');render(v);message.className='message ok';message.textContent='Settings saved.';document.getElementById('smtp_password').value='';document.getElementById('twilio_auth_token').value='';document.getElementById('gotify_app_token').value=''}catch(err){message.className='message error';message.textContent=err.message}finally{b.disabled=false}});
+form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());data.notify_statuses=[...form.querySelectorAll('input[name="notify_statuses"]:checked')].map(input=>input.value);data.method=form.querySelector('input[name="method"]:checked')?.value||'none';if(data.method!=='email')for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','smtp_password','email_from'])delete data[k];if(data.method!=='whatsapp')for(const k of ['whatsapp_to','whatsapp_phone_number_id','whatsapp_access_token','whatsapp_template_name','whatsapp_template_language'])delete data[k];if(data.method!=='gotify')for(const k of ['gotify_server','gotify_app_token','gotify_priority'])delete data[k];const b=document.getElementById('save-button');b.disabled=true;message.className='message';message.textContent='Saving…';try{const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not save settings');render(v);message.className='message ok';message.textContent='Settings saved.';document.getElementById('smtp_password').value='';document.getElementById('whatsapp_access_token').value='';document.getElementById('gotify_app_token').value=''}catch(err){message.className='message error';message.textContent=err.message}finally{b.disabled=false}});
 document.getElementById('check-button').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Checking…';try{const r=await fetch('/api/check',{method:'POST'});render(await r.json(),false)}catch(err){message.className='message error';message.textContent=err.message}finally{b.disabled=false;b.textContent='Check now'}});
 document.getElementById('test-gotify-button').addEventListener('click',async e=>{const b=e.currentTarget,result=document.getElementById('gotify-test-message'),data=Object.fromEntries(new FormData(form).entries());b.disabled=true;b.textContent='Sending…';result.className='message';result.textContent='Sending test push…';try{const r=await fetch('/api/test-gotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||'Gotify test failed');result.className='message ok';result.textContent=v.message||'Test push accepted by Gotify.'}catch(err){result.className='message error';result.textContent=err.message}finally{b.disabled=false;b.textContent='Send test push'}});
 refresh().catch(err=>document.getElementById('status-sub').textContent=err.message);setInterval(()=>refresh().catch(()=>{}),15000);
