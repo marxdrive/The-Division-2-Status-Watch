@@ -35,6 +35,14 @@ STATES = {
     "problems": ("problems", "problem", "degraded", "limited service", "partial outage"),
     "outage": ("outage", "outages", "offline", "down", "unavailable"),
 }
+ALLOWED_INTERVALS = (3, 5, 10, 15, 20, 25, 30, 60)
+ALERT_STATES = ("operational", "maintenance", "problems", "outage")
+STATUS_LABELS = {
+    "operational": "Online (Operational)",
+    "maintenance": "Maintenance",
+    "problems": "Problems",
+    "outage": "Outage",
+}
 
 
 def now_iso() -> str:
@@ -57,7 +65,8 @@ def write_json(path: Path, value: dict) -> None:
 
 def default_settings() -> dict:
     return {
-        "interval_minutes": 5, "method": "none", "email_to": "",
+        "interval_minutes": 5, "notify_statuses": ["operational"],
+        "method": "none", "email_to": "",
         "smtp_host": "", "smtp_port": 587, "smtp_security": "starttls",
         "smtp_username": "", "smtp_password": "", "email_from": "",
         "phone_to": "", "twilio_account_sid": "", "twilio_auth_token": "",
@@ -70,9 +79,14 @@ def get_settings() -> dict:
     result = default_settings()
     result.update(read_json(SETTINGS_PATH, {}))
     try:
-        result["interval_minutes"] = min(20, max(3, int(result["interval_minutes"])))
+        interval = int(result["interval_minutes"])
+        result["interval_minutes"] = min(ALLOWED_INTERVALS, key=lambda value: abs(value - interval))
     except (TypeError, ValueError):
         result["interval_minutes"] = 5
+    selected = result.get("notify_statuses", ["operational"])
+    if not isinstance(selected, list):
+        selected = ["operational"]
+    result["notify_statuses"] = [status for status in ALERT_STATES if status in selected]
     return result
 
 
@@ -81,9 +95,13 @@ def get_initial_state() -> dict:
         "status": "unknown", "last_known_status": "unknown",
         "last_checked": None, "last_change": None,
         "error": "Waiting for the first check.", "notification_error": None,
-        "pending_recovery": False, "source": WIDGET_URL,
+        "pending_notification": None, "source": WIDGET_URL,
     }
-    result.update(read_json(STATE_PATH, {}))
+    stored = read_json(STATE_PATH, {})
+    result.update(stored)
+    if "pending_notification" not in stored and stored.get("pending_recovery"):
+        result["pending_notification"] = "operational"
+    result.pop("pending_recovery", None)
     return result
 
 
@@ -275,14 +293,23 @@ def send_gotify(
             raise
 
 
-def notify_recovery(settings: dict) -> None:
-    body = f"The Division 2 is back online according to Ubisoft's status page.\n\nChecked at {now_iso()} (UTC).\n{PAGE_URL}"
+def notify_status(settings: dict, status: str) -> None:
+    if status not in STATUS_LABELS:
+        raise ValueError("Cannot send a notification for an unknown status.")
+    if status == "operational":
+        subject = "The Division 2 is back online"
+        message = "The Division 2 is back online according to Ubisoft's status page."
+    else:
+        label = STATUS_LABELS[status]
+        subject = f"The Division 2 status: {label}"
+        message = f"Ubisoft reports The Division 2 status as {label}."
+    body = f"{message}\n\nChecked at {now_iso()} (UTC).\n{PAGE_URL}"
     if settings.get("method") == "email":
-        send_email(settings, "The Division 2 is back online", body)
+        send_email(settings, subject, body)
     elif settings.get("method") == "sms":
-        send_sms(settings, "The Division 2 is back online. Ubisoft status: " + PAGE_URL)
+        send_sms(settings, f"{message} Ubisoft status: {PAGE_URL}")
     elif settings.get("method") == "gotify":
-        send_gotify(settings, body)
+        send_gotify(settings, body, title=subject)
     else:
         raise ValueError("Choose an alert method in Settings.")
 
@@ -300,7 +327,7 @@ class Monitor:
         with self.lock:
             s = self.settings
             safe = {key: s[key] for key in (
-                "interval_minutes", "method", "email_to", "smtp_host", "smtp_port",
+                "interval_minutes", "notify_statuses", "method", "email_to", "smtp_host", "smtp_port",
                 "smtp_security", "smtp_username", "email_from", "phone_to",
                 "twilio_account_sid", "twilio_from", "gotify_server", "gotify_priority",
             )}
@@ -320,6 +347,11 @@ class Monitor:
             for key in ordinary:
                 if key in incoming:
                     updated[key] = str(incoming[key]).strip()
+            if "notify_statuses" in incoming:
+                selected = incoming["notify_statuses"]
+                if not isinstance(selected, list) or any(status not in ALERT_STATES for status in selected):
+                    raise ValueError("Choose valid status alerts.")
+                updated["notify_statuses"] = [status for status in ALERT_STATES if status in selected]
             for key in ("smtp_password", "twilio_auth_token", "gotify_app_token"):
                 value = str(incoming.get(key, "")).strip()
                 if value:
@@ -330,8 +362,8 @@ class Monitor:
                 updated["gotify_priority"] = int(incoming.get("gotify_priority", updated["gotify_priority"]))
             except (TypeError, ValueError):
                 raise ValueError("Interval, SMTP port, and Gotify priority must be numbers.")
-            if not 3 <= interval <= 20:
-                raise ValueError("Check interval must be from 3 to 20 minutes.")
+            if interval not in ALLOWED_INTERVALS:
+                raise ValueError("Choose a check interval of 3, 5, 10, 15, 20, 25, 30, or 60 minutes.")
             if not 0 <= updated["gotify_priority"] <= 10:
                 raise ValueError("Gotify priority must be from 0 to 10.")
             updated["interval_minutes"] = interval
@@ -392,31 +424,37 @@ class Monitor:
                 if status:
                     if status != previous:
                         self.state["last_change"] = checked
-                    self.state["last_known_status"] = status
-                    if status == "operational" and previous in ("maintenance", "problems", "outage"):
-                        self.state["pending_recovery"] = True
-                    if status != "operational":
+                        if previous in ALERT_STATES and status in self.settings["notify_statuses"]:
+                            self.state["pending_notification"] = status
+                        else:
+                            self.state["pending_notification"] = None
                         self.state["notification_error"] = None
+                    self.state["last_known_status"] = status
                 write_json(STATE_PATH, self.state)
                 settings = self.settings.copy()
-                pending = bool(self.state.get("pending_recovery"))
-            if status == "operational" and pending:
+                pending = self.state.get("pending_notification")
+                if pending not in settings["notify_statuses"]:
+                    self.state["pending_notification"] = None
+                    self.state["notification_error"] = None
+                    pending = None
+                    write_json(STATE_PATH, self.state)
+            if status == pending and pending:
                 if settings.get("method") not in ("email", "sms", "gotify"):
                     with self.lock:
-                        self.state["notification_error"] = "Recovery alert pending. Choose Email, Phone message, or Gotify in settings."
+                        self.state["notification_error"] = f"{STATUS_LABELS[pending]} alert pending. Choose Email, Phone message, or Gotify in settings."
                         write_json(STATE_PATH, self.state)
                 else:
                     try:
-                        notify_recovery(settings)
-                        log.info("Recovery notification sent via %s", settings.get("method"))
+                        notify_status(settings, pending)
+                        log.info("Status notification sent for %s via %s", pending, settings.get("method"))
                         with self.lock:
-                            self.state["pending_recovery"] = False
+                            self.state["pending_notification"] = None
                             self.state["notification_error"] = None
                             write_json(STATE_PATH, self.state)
                     except Exception:
-                        log.exception("Recovery notification could not be sent")
+                        log.exception("Status notification could not be sent")
                         with self.lock:
-                            self.state["notification_error"] = "The recovery alert could not be sent and will be retried. Check settings and container logs."
+                            self.state["notification_error"] = "The status alert could not be sent and will be retried. Check settings and container logs."
                             write_json(STATE_PATH, self.state)
             return self.public_snapshot()
         finally:
@@ -452,6 +490,7 @@ input,select{width:100%;border:1px solid #3a4a55;border-radius:9px;background:#1
 input:focus,select:focus{border-color:var(--blue);box-shadow:0 0 0 3px #83b8ff20}input::placeholder{color:#71838e}
 .inline{display:grid;grid-template-columns:1fr 1fr;gap:12px}.radio-row{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0 16px}
 .radio{border:1px solid #354651;background:#141e24;border-radius:10px;padding:11px 12px;display:flex;gap:9px;align-items:center;cursor:pointer}.radio input{width:auto;accent-color:#83b8ff}
+ .status-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.status-option{display:flex;align-items:center;gap:9px;border:1px solid #354651;background:#141e24;border-radius:10px;padding:10px 12px;font-weight:550;cursor:pointer}.status-option input{width:16px;height:16px;margin:0;accent-color:#83b8ff;flex:none}
 .section{border-top:1px solid var(--line);padding-top:16px;margin-top:16px}.section-title{font-size:13px;font-weight:750;margin-bottom:12px}.hint{color:var(--muted);font-size:11px;margin-top:5px}
 button{border:0;border-radius:9px;background:#88baff;color:#0c1820;font:750 14px system-ui,sans-serif;padding:11px 16px;cursor:pointer}button:hover{background:#a4cbff}button:disabled{opacity:.55;cursor:wait}
 .secondary{background:#263641;color:var(--text);border:1px solid #3b4d58}.secondary:hover{background:#30434f}.actions{display:flex;align-items:center;gap:12px;margin-top:20px}
@@ -459,15 +498,15 @@ button{border:0;border-radius:9px;background:#88baff;color:#0c1820;font:750 14px
 .info-list{display:grid;gap:12px;margin:16px 0 0}.info-row{display:flex;justify-content:space-between;gap:16px;font-size:13px}.info-row span:first-child{color:var(--muted)}
 .notice{border-left:2px solid #60798b;padding:2px 0 2px 12px;margin-top:20px;color:var(--muted);font-size:12px}.source{display:inline-block;margin-top:18px;color:var(--blue);font-size:12px;text-decoration:none}.source:hover{text-decoration:underline}[hidden]{display:none!important}
 @media(max-width:740px){main{margin-top:24px}.columns{grid-template-columns:1fr}.status-card{grid-template-columns:1fr auto}.card{padding:18px}}
-@media(max-width:520px){.radio-row{grid-template-columns:1fr}}
+ @media(max-width:520px){.radio-row,.status-options{grid-template-columns:1fr}}
 @media(max-width:420px){.status-card{grid-template-columns:1fr}.status-pill{justify-self:start}.inline{grid-template-columns:1fr;gap:0}}
 </style></head><body><main>
 <header><div><div class="eyebrow">Self-hosted game monitor</div><h1>The Division 2 Status Watch</h1></div><div class="logo" aria-hidden="true">D2</div></header>
 <section class="card status-card" aria-live="polite"><div><div class="label">Ubisoft server status</div><div id="status-name" class="status-name">Checking…</div><div id="status-sub" class="status-sub">Waiting for the first check</div></div><div id="status-pill" class="status-pill unknown">Unknown</div></section>
-<div class="columns"><section class="card"><h2>Monitor settings</h2><p class="intro">Choose how often to check and where to send a recovery alert.</p>
+<div class="columns"><section class="card"><h2>Monitor settings</h2><p class="intro">Choose how often to check, which statuses to alert for, and where to send notifications.</p>
 <form id="settings-form"><div class="field"><label for="interval">Check interval</label><select id="interval" name="interval_minutes">
-<option value="3">Every 3 minutes</option><option value="4">Every 4 minutes</option><option value="5">Every 5 minutes</option><option value="6">Every 6 minutes</option><option value="7">Every 7 minutes</option><option value="8">Every 8 minutes</option><option value="9">Every 9 minutes</option><option value="10">Every 10 minutes</option><option value="11">Every 11 minutes</option><option value="12">Every 12 minutes</option><option value="13">Every 13 minutes</option><option value="14">Every 14 minutes</option><option value="15">Every 15 minutes</option><option value="16">Every 16 minutes</option><option value="17">Every 17 minutes</option><option value="18">Every 18 minutes</option><option value="19">Every 19 minutes</option><option value="20">Every 20 minutes</option>
-</select></div><div class="field"><label>Recovery notification</label><div class="radio-row"><label class="radio"><input type="radio" name="method" value="email"> Email</label><label class="radio"><input type="radio" name="method" value="sms"> Phone message</label><label class="radio"><input type="radio" name="method" value="gotify"> Gotify push</label></div></div>
+<option value="3">Every 3 minutes</option><option value="5">Every 5 minutes</option><option value="10">Every 10 minutes</option><option value="15">Every 15 minutes</option><option value="20">Every 20 minutes</option><option value="25">Every 25 minutes</option><option value="30">Every 30 minutes</option><option value="60">Every 60 minutes</option>
+</select></div><div class="field"><div class="section-title">Status change alerts</div><div class="hint">Send a notification when Ubisoft changes to any selected status. Online (Operational) is selected by default.</div><div class="status-options"><label class="status-option"><input type="checkbox" name="notify_statuses" value="operational"> Online (Operational)</label><label class="status-option"><input type="checkbox" name="notify_statuses" value="maintenance"> Maintenance</label><label class="status-option"><input type="checkbox" name="notify_statuses" value="problems"> Problems</label><label class="status-option"><input type="checkbox" name="notify_statuses" value="outage"> Outage</label></div></div><div class="field"><label>Notification delivery</label><div class="radio-row"><label class="radio"><input type="radio" name="method" value="email"> Email</label><label class="radio"><input type="radio" name="method" value="sms"> Phone message</label><label class="radio"><input type="radio" name="method" value="gotify"> Gotify push</label></div></div>
 <div id="email-settings" class="section" hidden><div class="section-title">Email delivery</div>
 <div class="field"><label for="email_to">Send alerts to</label><input id="email_to" name="email_to" type="email" autocomplete="email" placeholder="you@example.com"></div>
 <div class="inline"><div class="field"><label for="smtp_host">SMTP server</label><input id="smtp_host" name="smtp_host" placeholder="smtp.example.com"></div><div class="field"><label for="smtp_port">SMTP port</label><input id="smtp_port" name="smtp_port" type="number" min="1" max="65535" placeholder="587"></div></div>
@@ -485,14 +524,14 @@ button{border:0;border-radius:9px;background:#88baff;color:#0c1820;font:750 14px
 <div class="field"><label for="gotify_priority">Notification priority</label><select id="gotify_priority" name="gotify_priority"><option value="0">0 — No notification</option><option value="1">1 — Quiet</option><option value="2">2 — Quiet</option><option value="3">3 — Quiet</option><option value="4">4 — Sound</option><option value="5">5 — Sound (default)</option><option value="6">6 — Sound</option><option value="7">7 — Sound</option><option value="8">8 — Sound and vibration</option><option value="9">9 — Sound and vibration</option><option value="10">10 — Sound and vibration</option></select></div>
 <div class="actions"><button id="test-gotify-button" class="secondary" type="button">Send test push</button><div id="gotify-test-message" class="message" role="status"></div></div></div>
 <div class="actions"><button id="save-button" type="submit">Save settings</button><div id="message" class="message" role="status"></div></div></form></section>
-<aside class="card"><h2>Monitor details</h2><p class="intro">Alerts are sent when Ubisoft reports a return to operational after maintenance, problems, or an outage.</p>
+<aside class="card"><h2>Monitor details</h2><p class="intro">Alerts are sent once when Ubisoft changes to a status you selected.</p>
 <div class="info-list"><div class="info-row"><span>Last checked</span><strong id="last-checked">—</strong></div><div class="info-row"><span>Last status change</span><strong id="last-change">—</strong></div><div class="info-row"><span>Alert method</span><strong id="alert-method">Not set</strong></div></div>
 <div id="monitor-note" class="notice">If Ubisoft's page cannot be reached, the dashboard shows Unknown. If no unambiguous live status is found, it displays Online as the default and waits for the next check.</div>
 <a class="source" href="https://www.ubisoft.com/en-us/game/the-division/the-division-2/status" target="_blank" rel="noreferrer">Open Ubisoft status page ↗</a>
 <div class="actions"><button id="check-button" class="secondary" type="button">Check now</button></div></aside></div></main>
 <script>
 const form=document.getElementById('settings-form'),message=document.getElementById('message');
-const labels={operational:'Operational',online:'Online',maintenance:'Maintenance',problems:'Problems',outage:'Outage',unknown:'Unknown'};
+const labels={operational:'Online (Operational)',online:'Online',maintenance:'Maintenance',problems:'Problems',outage:'Outage',unknown:'Unknown'};
 function time(v){if(!v)return '—';const d=new Date(v);return Number.isNaN(d.getTime())?v:d.toLocaleString()}
 function method(v){document.getElementById('email-settings').hidden=v!=='email';document.getElementById('sms-settings').hidden=v!=='sms';document.getElementById('gotify-settings').hidden=v!=='gotify';for(const r of document.querySelectorAll('input[name="method"]'))r.checked=r.value===v}
 function render(data,syncSettings=true){
@@ -510,6 +549,8 @@ function render(data,syncSettings=true){
   document.getElementById('interval').value=String(c.interval_minutes||5);
   method(c.method||'none');
   for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','email_from','phone_to','twilio_account_sid','twilio_from','gotify_server','gotify_priority'])if(c[k]!==undefined)document.getElementById(k).value=c[k];
+  const selected=Array.isArray(c.notify_statuses)?c.notify_statuses:['operational'];
+  for(const input of document.querySelectorAll('input[name="notify_statuses"]'))input.checked=selected.includes(input.value);
   if(c.has_smtp_password)document.getElementById('smtp_password').placeholder='Saved; leave blank to keep';
   if(c.has_twilio_auth_token)document.getElementById('twilio_auth_token').placeholder='Saved; leave blank to keep';
   if(c.has_gotify_app_token)document.getElementById('gotify_app_token').placeholder='Saved; leave blank to keep';
@@ -517,7 +558,7 @@ function render(data,syncSettings=true){
 for(const radio of document.querySelectorAll('input[name="method"]'))radio.addEventListener('change',()=>method(radio.value));
 let settingsLoaded=false;
 async function refresh(){const r=await fetch('/api/status');if(!r.ok)throw Error('Could not load status');render(await r.json(),!settingsLoaded);settingsLoaded=true}
-form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());data.method=form.querySelector('input[name="method"]:checked')?.value||'none';if(data.method!=='email')for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','smtp_password','email_from'])delete data[k];if(data.method!=='sms')for(const k of ['phone_to','twilio_account_sid','twilio_auth_token','twilio_from'])delete data[k];if(data.method!=='gotify')for(const k of ['gotify_server','gotify_app_token','gotify_priority'])delete data[k];const b=document.getElementById('save-button');b.disabled=true;message.className='message';message.textContent='Saving…';try{const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not save settings');render(v);message.className='message ok';message.textContent='Settings saved.';document.getElementById('smtp_password').value='';document.getElementById('twilio_auth_token').value='';document.getElementById('gotify_app_token').value=''}catch(err){message.className='message error';message.textContent=err.message}finally{b.disabled=false}});
+form.addEventListener('submit',async e=>{e.preventDefault();const data=Object.fromEntries(new FormData(form).entries());data.notify_statuses=[...form.querySelectorAll('input[name="notify_statuses"]:checked')].map(input=>input.value);data.method=form.querySelector('input[name="method"]:checked')?.value||'none';if(data.method!=='email')for(const k of ['email_to','smtp_host','smtp_port','smtp_security','smtp_username','smtp_password','email_from'])delete data[k];if(data.method!=='sms')for(const k of ['phone_to','twilio_account_sid','twilio_auth_token','twilio_from'])delete data[k];if(data.method!=='gotify')for(const k of ['gotify_server','gotify_app_token','gotify_priority'])delete data[k];const b=document.getElementById('save-button');b.disabled=true;message.className='message';message.textContent='Saving…';try{const r=await fetch('/api/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||'Could not save settings');render(v);message.className='message ok';message.textContent='Settings saved.';document.getElementById('smtp_password').value='';document.getElementById('twilio_auth_token').value='';document.getElementById('gotify_app_token').value=''}catch(err){message.className='message error';message.textContent=err.message}finally{b.disabled=false}});
 document.getElementById('check-button').addEventListener('click',async e=>{const b=e.currentTarget;b.disabled=true;b.textContent='Checking…';try{const r=await fetch('/api/check',{method:'POST'});render(await r.json(),false)}catch(err){message.className='message error';message.textContent=err.message}finally{b.disabled=false;b.textContent='Check now'}});
 document.getElementById('test-gotify-button').addEventListener('click',async e=>{const b=e.currentTarget,result=document.getElementById('gotify-test-message'),data=Object.fromEntries(new FormData(form).entries());b.disabled=true;b.textContent='Sending…';result.className='message';result.textContent='Sending test push…';try{const r=await fetch('/api/test-gotify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});const v=await r.json();if(!r.ok)throw Error(v.error||'Gotify test failed');result.className='message ok';result.textContent=v.message||'Test push accepted by Gotify.'}catch(err){result.className='message error';result.textContent=err.message}finally{b.disabled=false;b.textContent='Send test push'}});
 refresh().catch(err=>document.getElementById('status-sub').textContent=err.message);setInterval(()=>refresh().catch(()=>{}),15000);
