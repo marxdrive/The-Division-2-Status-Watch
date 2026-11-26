@@ -1,4 +1,4 @@
-# Division 2 Status Watch
+# The Division 2 Status Watch
 
 A small web app and background monitor for The Division 2. It checks Ubisoft's status display on a configurable 3–20 minute interval and sends one recovery alert when a previously reported maintenance, problem, or outage changes to operational.
 
